@@ -171,6 +171,13 @@ func OpenatTest() {
 	}
 	unix.Close(fxx)
 
+	// Also test OpenFileAt
+	f2, err := capsicum.OpenFileAt(f, "yy", os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		panic(err)
+	}
+	f2.Close()
+
 	// The right to open BASE/xx is not ambient
 	_, err = os.OpenFile(procArg+"/xx", os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
 	if err == nil {
