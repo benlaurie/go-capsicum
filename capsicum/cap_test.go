@@ -198,28 +198,28 @@ func OpenatTest() {
 	}
 
 	// Remove all caps except read and lookup.
-	r, err := capsicum.CapRightsInit([]uint64{capsicum.CAP_READ, capsicum.CAP_LOOKUP})
+	r, err := capsicum.CapRightsInit(capsicum.CAP_READ, capsicum.CAP_LOOKUP)
 	if err != nil {
 		panic(fmt.Sprintf("CapRightsInit failed: %s %#v", err, err))
 	}
-	err = capsicum.CapRightsLimit(f.Fd(), r)
+	err = capsicum.CapRightsLimit(f, r)
 	if err != nil {
 		panic(fmt.Sprintf("CapRightsLimit failed: %s %#v", err, err))
 	}
 
 	// Check we can get the rights back again
-	r, err = capsicum.CapRightsGet(f.Fd())
+	r, err = capsicum.CapRightsGet(f)
 	if err != nil {
 		panic(fmt.Sprintf("CapRightsGet failed: %s %#v", err, err))
 	}
-	b, err := capsicum.CapRightsIsSet(r, []uint64{capsicum.CAP_READ, capsicum.CAP_LOOKUP})
+	b, err := capsicum.CapRightsIsSet(r, capsicum.CAP_READ, capsicum.CAP_LOOKUP)
 	if err != nil {
 		panic(fmt.Sprintf("CapRightsIsSet failed: %s %#v", err, err))
 	}
 	if !b {
 		panic(fmt.Sprintf("Unexpected rights"))
 	}
-	b, err = capsicum.CapRightsIsSet(r, []uint64{capsicum.CAP_READ, capsicum.CAP_LOOKUP, capsicum.CAP_WRITE})
+	b, err = capsicum.CapRightsIsSet(r, capsicum.CAP_READ, capsicum.CAP_LOOKUP, capsicum.CAP_WRITE)
 	if err != nil {
 		panic(fmt.Sprintf("CapRightsIsSet failed: %s %#v", err, err))
 	}
@@ -259,17 +259,17 @@ func TestOpenat(t *testing.T) {
 }
 
 func TestCapRightsSetAndClear(t *testing.T) {
-	r, err := capsicum.CapRightsInit([]uint64{capsicum.CAP_READ, capsicum.CAP_WRITE, capsicum.CAP_PDWAIT})
+	r, err := capsicum.CapRightsInit(capsicum.CAP_READ, capsicum.CAP_WRITE, capsicum.CAP_PDWAIT)
 	if err != nil {
 		t.Fatalf("CapRightsInit failed: %s", err)
 	}
 
-	err = capsicum.CapRightsSet(r, []uint64{capsicum.CAP_EVENT, capsicum.CAP_LISTEN})
+	err = capsicum.CapRightsSet(r, capsicum.CAP_EVENT, capsicum.CAP_LISTEN)
 	if err != nil {
 		t.Fatalf("CapRightsSet failed: %s", err)
 	}
 
-	b, err := capsicum.CapRightsIsSet(r, []uint64{capsicum.CAP_READ, capsicum.CAP_WRITE, capsicum.CAP_PDWAIT, capsicum.CAP_EVENT, capsicum.CAP_LISTEN})
+	b, err := capsicum.CapRightsIsSet(r, capsicum.CAP_READ, capsicum.CAP_WRITE, capsicum.CAP_PDWAIT, capsicum.CAP_EVENT, capsicum.CAP_LISTEN)
 	if err != nil {
 		t.Fatalf("CapRightsIsSet failed: %s", err)
 	}
@@ -277,12 +277,12 @@ func TestCapRightsSetAndClear(t *testing.T) {
 		t.Fatalf("Wrong rights set")
 	}
 
-	err = capsicum.CapRightsClear(r, []uint64{capsicum.CAP_READ, capsicum.CAP_PDWAIT})
+	err = capsicum.CapRightsClear(r, capsicum.CAP_READ, capsicum.CAP_PDWAIT)
 	if err != nil {
 		t.Fatalf("CapRightsClear failed: %s", err)
 	}
 
-	b, err = capsicum.CapRightsIsSet(r, []uint64{capsicum.CAP_WRITE, capsicum.CAP_EVENT, capsicum.CAP_LISTEN})
+	b, err = capsicum.CapRightsIsSet(r, capsicum.CAP_WRITE, capsicum.CAP_EVENT, capsicum.CAP_LISTEN)
 	if err != nil {
 		t.Fatalf("CapRightsIsSet failed: %s", err)
 	}

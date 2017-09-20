@@ -26,29 +26,29 @@ func CapEnter() error {
 	return unix.CapEnter()
 }
 
-func CapRightsInit(rights []uint64) (*CapRights, error) {
+func CapRightsInit(rights ...uint64) (*CapRights, error) {
 	r, err := unix.CapRightsInit(rights)
 	return (*CapRights)(r), err
 }
 
 // FIXME: should take a File, not an fd?
-func CapRightsLimit(fd uintptr, r *CapRights) error {
+func CapRightsLimitFd(fd uintptr, r *CapRights) error {
 	return unix.CapRightsLimit(fd, (*unix.CapRights)(r))
 }
 
-func CapRightsSet(r *CapRights, rights []uint64) error {
-	return unix.CapRightsSet((*unix.CapRights)(r), rights)
-}
-
-func CapRightsClear(r *CapRights, rights []uint64) error {
-	return unix.CapRightsClear((*unix.CapRights)(r), rights)
-}
-
-func CapRightsGet(fd uintptr) (*CapRights, error) {
+func CapRightsGetFd(fd uintptr) (*CapRights, error) {
 	r, err := unix.CapRightsGet(fd)
 	return (*CapRights)(r), err
 }
 
-func CapRightsIsSet(r *CapRights, rights []uint64) (bool, error) {
+func CapRightsSet(r *CapRights, rights ...uint64) error {
+	return unix.CapRightsSet((*unix.CapRights)(r), rights)
+}
+
+func CapRightsClear(r *CapRights, rights ...uint64) error {
+	return unix.CapRightsClear((*unix.CapRights)(r), rights)
+}
+
+func CapRightsIsSet(r *CapRights, rights ...uint64) (bool, error) {
 	return unix.CapRightsIsSet((*unix.CapRights)(r), rights)
 }
