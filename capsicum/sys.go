@@ -34,7 +34,6 @@ func syscallMode(i os.FileMode) (o uint32) {
 // methods on the returned File can be used for I/O.
 // If there is an error, it will be of type *PathError.
 // FIXME: this is mostly just os.OpenFile - probably that should call this
-// FIXME: this isn't just a FreeBSD call, Linux has it, too
 func OpenFileAt(f *os.File, name string, flag int, perm os.FileMode) (*os.File, error) {
 	chmod := false
 	if !supportsCreateWithStickyBit && flag&os.O_CREATE != 0 && perm&os.ModeSticky != 0 {
