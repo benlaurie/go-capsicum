@@ -282,6 +282,14 @@ func TestCapRightsSetAndClear(t *testing.T) {
 		t.Fatalf("CapRightsClear failed: %s", err)
 	}
 
+	b, err = capsicum.CapRightsIsSet(r, capsicum.CAP_READ, capsicum.CAP_WRITE, capsicum.CAP_PDWAIT, capsicum.CAP_EVENT, capsicum.CAP_LISTEN)
+	if err != nil {
+		t.Fatalf("CapRightsIsSet failed: %s", err)
+	}
+	if b {
+		t.Fatalf("Wrong rights set")
+	}
+
 	b, err = capsicum.CapRightsIsSet(r, capsicum.CAP_WRITE, capsicum.CAP_EVENT, capsicum.CAP_LISTEN)
 	if err != nil {
 		t.Fatalf("CapRightsIsSet failed: %s", err)
