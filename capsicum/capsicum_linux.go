@@ -1,3 +1,5 @@
+// +build linux
+
 package capsicum
 
 /*
@@ -136,14 +138,14 @@ func CapEnter() error {
 	return err
 }
 
-func CapRightsInit(rights []uint64) (*CapRights, error) {
+func CapRightsInit(rights ...uint64) (*CapRights, error) {
 	var r C.struct_cap_rights
 	ret, err := C.doCapRightsInit(&r, (*C.uint64_t)(&rights[0]), C.int(len(rights)))
 	return (*CapRights)(ret), err
 }
 
 // FIXME: should take a File, not an fd?
-func CapRightsLimit(fd uintptr, r *CapRights) error {
+func CapRightsLimitFd(fd uintptr, r *CapRights) error {
 	ret, err := C.cap_rights_limit(C.int(fd), (*C.struct_cap_rights)(r))
 	if ret == 0 {
 		return nil
@@ -151,7 +153,7 @@ func CapRightsLimit(fd uintptr, r *CapRights) error {
 	return err
 }
 
-func CapRightsGet(fd uintptr) (*CapRights, error) {
+func CapRightsGetFd(fd uintptr) (*CapRights, error) {
 	var r C.struct_cap_rights
 	ret, err := C.cap_rights_get(C.int(fd), &r)
 	if ret == 0 {
@@ -160,17 +162,17 @@ func CapRightsGet(fd uintptr) (*CapRights, error) {
 	return nil, err
 }
 
-func CapRightsSet(r *CapRights, rights []uint64) error {
+func CapRightsSet(r *CapRights, rights ...uint64) error {
 	_, err := C.doCapRightsSet((*C.struct_cap_rights)(r), (*C.uint64_t)(&rights[0]), C.int(len(rights)))
 	return err
 }
 
-func CapRightsClear(r *CapRights, rights []uint64) error {
+func CapRightsClear(r *CapRights, rights ...uint64) error {
 	_, err := C.doCapRightsClear((*C.struct_cap_rights)(r), (*C.uint64_t)(&rights[0]), C.int(len(rights)))
 	return err
 }
 
-func CapRightsIsSet(r *CapRights, rights []uint64) (bool, error) {
+func CapRightsIsSet(r *CapRights, rights ...uint64) (bool, error) {
 	ret, err := C.doCapRightsIsSet((*C.struct_cap_rights)(r), (*C.uint64_t)(&rights[0]), C.int(len(rights)))
 	if err != nil {
 		return false, err
