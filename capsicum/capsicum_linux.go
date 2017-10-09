@@ -119,16 +119,6 @@ const (
 	ENOTCAPABLE = syscall.Errno(C.ENOTCAPABLE)
 )
 
-const (
-	CAP_CREATE = C.CAP_CREATE
-	CAP_EVENT  = C.CAP_EVENT
-	CAP_LISTEN = C.CAP_LISTEN
-	CAP_LOOKUP = C.CAP_LOOKUP
-	CAP_PDWAIT = C.CAP_PDWAIT
-	CAP_READ   = C.CAP_READ
-	CAP_WRITE  = C.CAP_WRITE
-)
-
 type CapRights C.struct_cap_rights
 
 func CapEnter() error {
