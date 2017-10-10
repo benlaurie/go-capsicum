@@ -15,3 +15,6 @@
 
 # backups
 *~
+
+# Generated
+capsicum/rights_info.go

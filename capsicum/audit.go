@@ -1,10 +1,16 @@
 package capsicum
 
+// #include "netinet/tcp.h"
+import "C"
+
 import (
 	"bufio"
+	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
+	"net"
 	"os"
 	"path"
 	"strconv"
@@ -17,14 +23,61 @@ const (
 	tcp6  = "/proc/self/net/tcp6"
 )
 
-type handler map[string]func(*syscall.Stat_t)
+type handler map[string]func(*syscall.Stat_t, string)
 
 var handlers = handler{
-	"socket": listSock,
+	"socket":     listSock,
+	"anon_inode": null,
 }
 
-func listSock(s *syscall.Stat_t) {
-	fmt.Printf(" inode %d", s.Ino)
+func null(_ *syscall.Stat_t, _ string) {
+}
+
+func parseIP6(ips string) (net.IP, uint64, error) {
+	if len(ips) != 37 {
+		return nil, 0, errors.New(fmt.Sprintf("Bad IPv6 format '%s'", ips))
+	}
+
+	ip := make([]byte, 16)
+	for n := 0; n < 16; n++ {
+		t, err := strconv.ParseUint(ips[n*2+1:n*2+2], 16, 8)
+		if err != nil {
+			return nil, 0, err
+		}
+		ip[n] = byte(t)
+	}
+	p, err := strconv.ParseUint(ips[33:37], 16, 16)
+	if err != nil {
+		return nil, 0, err
+	}
+	return ip, p, nil
+}
+
+func listSockInner(f []string) error {
+	status, err := strconv.ParseInt(f[3], 16, 8)
+	if err != nil {
+		return err
+	}
+	if status != C.TCP_LISTEN {
+		return errors.New(fmt.Sprintf("Don't know status %d", status))
+	}
+	ip, port, err := parseIP6(f[1])
+	if err != nil {
+		return err
+	}
+	fmt.Printf(" LISTEN(%s:%d)", ip.String(), port)
+	return nil
+}
+
+func listSock(_ *syscall.Stat_t, s string) {
+	if s[0] != '[' || s[len(s)-1] != ']' {
+		log.Panicf("Can't parse '%s'", s)
+	}
+	inode, err := strconv.Atoi(s[1 : len(s)-1])
+	if err != nil {
+		log.Panic(err)
+	}
+	//fmt.Printf(" inode %d", inode)
 	f, err := os.Open(tcp6)
 	if err != nil {
 		log.Panic(err)
@@ -42,14 +95,28 @@ func listSock(s *syscall.Stat_t) {
 	}
 	for l, p, err = r.ReadLine(); ; l, p, err = r.ReadLine() {
 		if err != nil {
-			log.Panic(err)
+			if err == io.EOF {
+				break
+			} else {
+				log.Panic(err)
+			}
 		}
-		c := strings.Fields(string(l))
-		if len(c) < 11 {
+		f := strings.Fields(string(l))
+		if len(f) < 11 {
 			log.Panic("Don't understand: %s", l)
 		}
-		fmt.Printf(" %#v", c)
+		i, err := strconv.Atoi(f[9])
+		if err != nil {
+			panic(err)
+		}
+		if i != inode {
+			continue
+		}
+		//fmt.Printf(" %#v", f)
+		listSockInner(f)
+		return
 	}
+	log.Panicf("socket %d not found", inode)
 }
 
 // FIXME: an evil program could mess with this by dup()ing and close()ing a lot...
@@ -86,7 +153,7 @@ func ListAllFDs() error {
 					fmt.Printf(" lstat failed: %s", err)
 				} else {
 					stat := i.Sys().(*syscall.Stat_t)
-					f(stat)
+					f(stat, scheme[1])
 				}
 			} else {
 				fmt.Printf(" no handler for '%s'", scheme[0])
