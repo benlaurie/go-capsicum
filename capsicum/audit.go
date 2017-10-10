@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"log"
 	"net"
 	"os"
 	"path"
@@ -23,19 +22,24 @@ const (
 	tcp6  = "/proc/self/net/tcp6"
 )
 
-type handler map[string]func(*syscall.Stat_t, string)
+type handler map[string]func(*syscall.Stat_t, string) error
 
 var handlers = handler{
 	"socket":     listSock,
 	"anon_inode": null,
 }
 
-func null(_ *syscall.Stat_t, _ string) {
+func errorf(f string, a ...interface{}) error {
+	return errors.New(fmt.Sprintf(f, a))
+}
+
+func null(_ *syscall.Stat_t, _ string) error {
+	return nil
 }
 
 func parseIP6(ips string) (net.IP, uint64, error) {
 	if len(ips) != 37 {
-		return nil, 0, errors.New(fmt.Sprintf("Bad IPv6 format '%s'", ips))
+		return nil, 0, errorf("Bad IPv6 format '%s'", ips)
 	}
 
 	ip := make([]byte, 16)
@@ -69,41 +73,41 @@ func listSockInner(f []string) error {
 	return nil
 }
 
-func listSock(_ *syscall.Stat_t, s string) {
+func listSock(_ *syscall.Stat_t, s string) error {
 	if s[0] != '[' || s[len(s)-1] != ']' {
-		log.Panicf("Can't parse '%s'", s)
+		return errorf("Can't parse '%s'", s)
 	}
 	inode, err := strconv.Atoi(s[1 : len(s)-1])
 	if err != nil {
-		log.Panic(err)
+		return err
 	}
 	//fmt.Printf(" inode %d", inode)
 	f, err := os.Open(tcp6)
 	if err != nil {
-		log.Panic(err)
+		return err
 	}
 	r := bufio.NewReader(f)
 	l, p, err := r.ReadLine()
 	if err != nil {
-		panic(err)
+		return err
 	}
 	if p {
-		log.Panic("line too long")
+		return errors.New("line too long")
 	}
 	if string(l) != "  sl  local_address                         remote_address                        st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode" {
-		log.Panic("unknown format: %s", l)
+		return errorf("unknown format: %s", l)
 	}
 	for l, p, err = r.ReadLine(); ; l, p, err = r.ReadLine() {
 		if err != nil {
 			if err == io.EOF {
 				break
 			} else {
-				log.Panic(err)
+				return err
 			}
 		}
 		f := strings.Fields(string(l))
 		if len(f) < 11 {
-			log.Panic("Don't understand: %s", l)
+			errorf("Don't understand: %s", l)
 		}
 		i, err := strconv.Atoi(f[9])
 		if err != nil {
@@ -114,9 +118,9 @@ func listSock(_ *syscall.Stat_t, s string) {
 		}
 		//fmt.Printf(" %#v", f)
 		listSockInner(f)
-		return
+		return nil
 	}
-	log.Panicf("socket %d not found", inode)
+	return errorf("socket %d not found", inode)
 }
 
 // FIXME: an evil program could mess with this by dup()ing and close()ing a lot...
