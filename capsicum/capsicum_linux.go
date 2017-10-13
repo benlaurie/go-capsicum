@@ -6,11 +6,14 @@ package capsicum
 #cgo LDFLAGS: -lcaprights -lffi
 #include <assert.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <ffi.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdint.h>
+#include <unistd.h>
 #include <sys/capsicum.h>
+#include <sys/stat.h>
 
 bool doCapRightsAny(void (*fn)(void), ffi_type *rtype, void *rvalue, cap_rights_t *rights, uint64_t values[], int c) {
     ffi_cif cif;
@@ -109,10 +112,13 @@ bool doCapRightsIsSet(cap_rights_t *rights, uint64_t values[], int c) {
 
     return ret;
 }
-
 */
 import "C"
-import "syscall"
+import (
+	"os"
+	"syscall"
+	"unsafe"
+)
 
 const (
 	ECAPMODE    = syscall.Errno(C.ECAPMODE)
@@ -169,4 +175,15 @@ func CapRightsIsSet(r *CapRights, rights ...uint64) (bool, error) {
 		return false, err
 	}
 	return bool(ret), nil
+}
+
+func ReadlinkAt(f *os.File, path string) (string, error) {
+	var b [C.PATH_MAX]byte
+	cpath := C.CString(path)
+	defer C.free(unsafe.Pointer(cpath))
+	ret, err := C.readlinkat(C.int(f.Fd()), cpath, (*C.char)(unsafe.Pointer(&b[0])), C.size_t(len(b)))
+	if err != nil {
+		return "", err
+	}
+	return string(b[:ret]), err
 }

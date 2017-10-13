@@ -8,10 +8,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net"
 	"os"
-	"path"
 	"strconv"
 	"strings"
 	"syscall"
@@ -22,7 +20,22 @@ const (
 	tcp6  = "/proc/self/net/tcp6"
 )
 
-type handler map[string]func(*syscall.Stat_t, string) (FDInfo, error)
+var fdDirFile, tcp6File *os.File
+
+func openOrDie(path string) *os.File {
+	f, err := os.Open(path)
+	if err != nil {
+		panic(err)
+	}
+	return f
+}
+
+func init() {
+	fdDirFile = openOrDie(fdDir)
+	tcp6File = openOrDie(tcp6)
+}
+
+type handler map[string]func(string) (FDInfo, error)
 
 var handlers = handler{
 	"socket":     listSock,
@@ -39,7 +52,7 @@ func (NilInfo) String() string {
 	return "[no info]"
 }
 
-func null(_ *syscall.Stat_t, _ string) (FDInfo, error) {
+func null(_ string) (FDInfo, error) {
 	return &NilInfo{}, nil
 }
 
@@ -50,7 +63,7 @@ func parseIP6(ips string) (net.IP, uint16, error) {
 
 	ip := make([]byte, 16)
 	for n := 0; n < 16; n++ {
-		t, err := strconv.ParseUint(ips[n*2+1:n*2+3], 16, 8)
+		t, err := strconv.ParseUint(ips[n*2:n*2+2], 16, 8)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -67,6 +80,8 @@ type SocketStatus int
 
 const (
 	LISTEN SocketStatus = iota
+	CLIENT
+	UNKNOWN
 )
 
 type Address struct {
@@ -75,38 +90,62 @@ type Address struct {
 }
 
 type FDSocket struct {
-	inode  int
-	status SocketStatus
-	src    Address
+	inode         int
+	status        SocketStatus
+	unknownStatus uint64 // The raw status from the socket - only set if |status| is UNKNOWN
+	src           Address
+	dest          Address // Not set if |status| is LISTEN
 }
 
 func (i FDSocket) String() string {
-	if i.status != LISTEN {
-		panic("bad status")
+	switch i.status {
+	case LISTEN:
+		return fmt.Sprintf("LISTEN(%s:%d)", i.src.ip, i.src.port)
+	case CLIENT:
+		return fmt.Sprintf("CLIENT(%s:%d -> %s:%d)", i.src.ip, i.src.port, i.dest.ip, i.dest.port)
+	case UNKNOWN:
+		return fmt.Sprintf("SOCKET[%d](%s:%d -> %s:%d)", i.unknownStatus, i.src.ip, i.src.port, i.dest.ip, i.dest.port)
+	default:
+		panic("Unknwon status")
 	}
-	return fmt.Sprintf("LISTEN(%s:%d)", i.src.ip, i.src.port)
 }
 
 func listSockInner(f []string, s *FDSocket) error {
-	status, err := strconv.ParseInt(f[3], 16, 8)
+	status, err := strconv.ParseUint(f[3], 16, 8)
 	if err != nil {
 		return err
-	}
-	if status != C.TCP_LISTEN {
-		return errors.New(fmt.Sprintf("Don't know status %d", status))
 	}
 	ip, port, err := parseIP6(f[1])
 	if err != nil {
 		return err
 	}
-	fmt.Printf(" LISTEN(%s:%d)", ip, port)
-	s.status = LISTEN
 	s.src.ip = ip
 	s.src.port = port
+
+	if status == C.TCP_LISTEN {
+		s.status = LISTEN
+		return nil
+	}
+
+	ip, port, err = parseIP6(f[2])
+	if err != nil {
+		return err
+	}
+	s.dest.ip = ip
+	s.dest.port = port
+
+	if status == C.TCP_ESTABLISHED {
+		s.status = CLIENT
+		return nil
+	}
+
+	s.status = UNKNOWN
+	s.unknownStatus = status
+
 	return nil
 }
 
-func listSock(_ *syscall.Stat_t, s string) (FDInfo, error) {
+func listSock(s string) (FDInfo, error) {
 	if s[0] != '[' || s[len(s)-1] != ']' {
 		return nil, errorf("Can't parse '%s'", s)
 	}
@@ -115,8 +154,8 @@ func listSock(_ *syscall.Stat_t, s string) (FDInfo, error) {
 		return nil, err
 	}
 	//fmt.Printf(" inode %d", inode)
-	f, err := os.Open(tcp6)
-	defer f.Close()
+	f := tcp6File
+	_, err = f.Seek(0, os.SEEK_SET)
 	if err != nil {
 		return nil, err
 	}
@@ -145,14 +184,17 @@ func listSock(_ *syscall.Stat_t, s string) (FDInfo, error) {
 		}
 		i, err := strconv.Atoi(f[9])
 		if err != nil {
-			panic(err)
+			return nil, err
 		}
 		if i != inode {
 			continue
 		}
 		s := FDSocket{inode: inode}
 		//fmt.Printf(" %#v", f)
-		listSockInner(f, &s)
+		err = listSockInner(f, &s)
+		if err != nil {
+			return nil, err
+		}
 		return &s, nil
 	}
 	return nil, errorf("socket %d not found", inode)
@@ -193,18 +235,24 @@ func (FDFile) String() string {
 }
 
 // FIXME: an evil program could mess with this by dup()ing and close()ing a lot...
-
 func GetAllFDInfo() ([]*FD, error) {
-	files, err := ioutil.ReadDir(fdDir)
+	// ReaddirnamesAt consumes its File
+	dir, err := Dup(fdDirFile)
 	if err != nil {
 		return nil, err
 	}
+
+	files, err := ReaddirnamesAt(dir)
+	if err != nil {
+		return nil, err
+	}
+
 	fds := make([]*FD, 0)
 	for _, file := range files {
 		var fd FD
 		fds = append(fds, &fd)
 
-		i, err := strconv.Atoi(file.Name())
+		i, err := strconv.Atoi(file)
 		if err != nil {
 			return nil, err
 		}
@@ -213,11 +261,11 @@ func GetAllFDInfo() ([]*FD, error) {
 		}
 		fd.fd = uintptr(i)
 
-		bname := path.Join(fdDir, file.Name())
-		name, err := os.Readlink(bname)
+		//bname := path.Join(fdDir, file.Name())
+		//name, err := os.Readlink(bname)
+		name, err := ReadlinkAt(fdDirFile, file)
 		if err != nil {
-			if err.(*os.PathError).Err == syscall.ENOENT {
-				fmt.Printf("%s disappeared\n", file.Name())
+			if err == syscall.ENOENT {
 				fd.info = FDDisappeared{}
 			} else {
 				return nil, err
@@ -238,17 +286,11 @@ func GetAllFDInfo() ([]*FD, error) {
 		if len(scheme) > 1 {
 			f := handlers[scheme[0]]
 			if f != nil {
-				i, err := os.Lstat(bname)
+				info, err := f(scheme[1])
 				if err != nil {
 					return nil, err
-				} else {
-					stat := i.Sys().(*syscall.Stat_t)
-					info, err := f(stat, scheme[1])
-					if err != nil {
-						return nil, err
-					}
-					fd.info = info
 				}
+				fd.info = info
 			} else {
 				return nil, errorf(" no handler for '%s'", scheme[0])
 			}
